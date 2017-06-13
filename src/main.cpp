@@ -27,6 +27,9 @@ Adafruit_BMP280 bmp; // I2C bus mode
 plainRFM69 rfm = plainRFM69(SLAVE_SELECT_PIN); // SPI bus mode
 
 bool isBMP280present = false; // sensor availability
+char send_buff[64]; // rfm sending data buffer
+
+// Temp2|" +String(bmp.readTemperature()) +"|Pres2|" +bmp.readPressure()/133.3 +"|Alt2|" +bmp.readAltitude(1013.25);
 
 void interrupt_RFM()
 {
@@ -57,30 +60,49 @@ void setup() {
   pinMode(SENDER_DETECT_PIN, INPUT_PULLUP);
   delay(5);
 
-  if (!bmp.begin(BMP_ADDR)) isBMP280present = false; // BPM280 sensor was not found -- respond with empty data fields
-  else isBMP280present = true;
+  if (!bmp.begin(BMP_ADDR))
+    isBMP280present = false; // BPM280 sensor was not found -- respond with empty data fields
+  else
+    isBMP280present = true;
 }
 
 
 
 // -----------------------------------------------------------------------------------------------------------
-String readBMP280()
+/*char *readBMP280()
 { // C|мм.р.ст.|м
  if (isBMP280present)
  {
-  return "Temp2|" +String(bmp.readTemperature()) +"|Pres2|" +bmp.readPressure()/133.3 +"|Alt2|" +bmp.readAltitude(1013.25);
+  strlcpy(temp, "       ", sizeof(temp));
+  temp[sizeof(temp)-1] = '\0';
+  dtostrf(bmp.readTemperature(), sizeof(temp), 2, temp);
+
+  //return "Temp2|" +String(bmp.readTemperature()) +"|Pres2|" +bmp.readPressure()/133.3 +"|Alt2|" +bmp.readAltitude(1013.25);
  }
- else return "Temp2|-|Pres2|-|Alt2|-";
+ else
+ { //"Temp2|-|Pres2|-|Alt2|-";
+   strlcpy(temp, "-------", sizeof(temp));
+ }
+ return temp;
 }
+*/
+
+// -----------------------------------------------------------------------------------------------------------
+int ins_data (const char * prefix, float val, uint8_t pos)
+{
+  uint8_t len;
 
 
+  return len; // last char always EOL ('\0')
+}
 
 // -----------------------------------------------------------------------------------------------------------
 void sender()
 {
     uint32_t start_time = millis();
-    uint8_t length;
-    String Buff;
+
+    //uint8_t length;
+    //String Buff;
 
     while(true) // infinite sending loop
     {
@@ -93,12 +115,21 @@ void sender()
         {
             start_time = millis();
             //Serial.print("Send Packet ("); Serial.print(length); Serial.print("): "); Serial.println(*counter);
-            Buff = readBMP280();
-            length = Buff.length() +1;
-            char buffer[length];
-            Buff.toCharArray(buffer,length);
-            rfm.sendVariable(&buffer,length);
-            Serial.println(Buff); // show sent data
+            //char *data = readBMP280();
+            //length = 8;
+            //length = Buff.length() +1;
+            //char buffer[length];
+            //Buff.toCharArray(buffer,length);
+
+            //dtostrf(bmp.readTemperature(), sizeof(temp), 2, temp);
+
+            uint8_t len;
+            //char prefix[3];
+            len = ins_data("TMP", bmp.readTemperature(), 0); // first portion (temperature)
+            len = ins_data("ALT", bmp.readAltitude(1013.25), len); // next, altitude in meters
+            len = ins_data("PRS", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
+            rfm.sendVariable(send_buff, len);
+            Serial.println(send_buff); // show sent data
         }
     }
 }
