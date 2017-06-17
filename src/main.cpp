@@ -97,26 +97,27 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   if (data > -1000 && data <= -100) {data_len=6;}
   if (data > -10000 && data <= -1000) {data_len=7;}
   dtostrf(data, data_len, 1, ptr_data);         // put sensor data
-  strcpy(&send_buff[prefix_len+data_len+pos],"|");
+  strcpy(&send_buff[prefix_len+data_len+pos],"|"); // put trail delimiter
+  //strcpy(&send_buff[prefix_len+data_len+pos+1],'\0'); // put EOL
 
     // --- show send_buff content
   Serial.print("pos="); Serial.println(data_len+prefix_len+pos+1);
   char *ptr0 = &send_buff[0];
   for (int i = 0; i < 64; i++)
   {
-      if (ptr0[i] < 32 && ptr0[i] > 126) // print code
+      if (ptr0[i] < 32 || ptr0[i] > 126) // print code
       {
           Serial.print("[");
-          Serial.print(ptr0[i]);
-          Serial.print("], ");
+          Serial.print((int8_t)ptr0[i]);
+          Serial.print("],");
       }
       else
       {
-          //Serial.print("], ");
           Serial.print(ptr0[i]); // print ascii char
           Serial.print(",");
       }
   }
+  Serial.println("");
   Serial.print("return len="); Serial.println(data_len+prefix_len);
   Serial.println("");
   // ---
@@ -142,17 +143,7 @@ void sender()
         if ((millis() - start_time) > 5000) // do this every 2000 ms
         {
             start_time = millis();
-            //Serial.print("Send Packet ("); Serial.print(length); Serial.print("): "); Serial.println(*counter);
-            //char *data = readBMP280();
-            //length = 8;
-            //length = Buff.length() +1;
-            //char buffer[length];
-            //Buff.toCharArray(buffer,length);
-
-            //dtostrf(bmp.readTemperature(), sizeof(temp), 2, temp);
-
             uint8_t len;
-            //char prefix[3];
             len = ins_data("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
             len = ins_data("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
             len = ins_data("PRS03|", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
