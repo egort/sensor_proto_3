@@ -6,7 +6,7 @@
       ##   ##
        #####
 */
-
+//#include <stdlib.h>
 #include <Wire.h>
 #include <SPI.h>
 #include "plainRFM69.h"      // RFM69 radio module 915MHz
@@ -67,34 +67,62 @@ void setup() {
 }
 
 
-
 // -----------------------------------------------------------------------------------------------------------
-/*char *readBMP280()
-{ // C|мм.р.ст.|м
- if (isBMP280present)
- {
-  strlcpy(temp, "       ", sizeof(temp));
-  temp[sizeof(temp)-1] = '\0';
-  dtostrf(bmp.readTemperature(), sizeof(temp), 2, temp);
-
-  //return "Temp2|" +String(bmp.readTemperature()) +"|Pres2|" +bmp.readPressure()/133.3 +"|Alt2|" +bmp.readAltitude(1013.25);
- }
- else
- { //"Temp2|-|Pres2|-|Alt2|-";
-   strlcpy(temp, "-------", sizeof(temp));
- }
- return temp;
-}
-*/
-
-// -----------------------------------------------------------------------------------------------------------
-int ins_data (const char * prefix, float val, uint8_t pos)
+int ins_data (const char *prefix, float data, uint8_t pos)
 {
-  uint8_t len;
+  /* char send_buff[64]; // GLOBAL
+  len = ins_data("TMP03", bmp.readTemperature(), 0); // first portion (temperature)
+  len = ins_data("ALT03", bmp.readAltitude(1013.25), len); // next, altitude in meters
+  len = ins_data("PRS03", bmp.readPressure(133.3), len); // last, pressure in mm Hg*/
 
+  uint8_t data_len; // TODO: try to use negative for left alignment in dtostr
+  int8_t prefix_len = strlen(prefix);             // prefix length
+  char *ptr_prefix = &send_buff[pos];             // sensor prefix (const char[]) position pointer
+  char *ptr_data = &send_buff[pos+prefix_len];    // sensor data (float) position pointer
+  strcpy(ptr_prefix, prefix);                     // put sensor prefix
 
-  return len; // last char always EOL ('\0')
+  Serial.print("prefix=");
+  Serial.print(prefix);
+  Serial.print(", prefix_len=");
+  Serial.print(prefix_len);
+  Serial.print(", data=");
+  Serial.println(data);
+
+  if (data > 0 && data < 10 ){ data_len = 3;}
+  if (data >= 10 && data < 100) {data_len =4;}
+  if (data >= 100 && data < 1000) {data_len=5;}
+  if (data >= 1000 && data < 10000) {data_len=6;}
+  if (data > -10 && data < 0) {data_len=4;}
+  if (data > -100 && data <= -10) {data_len=5;}
+  if (data > -1000 && data <= -100) {data_len=6;}
+  if (data > -10000 && data <= -1000) {data_len=7;}
+  dtostrf(data, data_len, 1, ptr_data);         // put sensor data
+  strcpy(&send_buff[prefix_len+data_len+pos],"|");
+
+    // --- show send_buff content
+  Serial.print("pos="); Serial.println(data_len+prefix_len+pos+1);
+  char *ptr0 = &send_buff[0];
+  for (int i = 0; i < 64; i++)
+  {
+      if (ptr0[i] < 32 && ptr0[i] > 126) // print code
+      {
+          Serial.print("[");
+          Serial.print(ptr0[i]);
+          Serial.print("], ");
+      }
+      else
+      {
+          //Serial.print("], ");
+          Serial.print(ptr0[i]); // print ascii char
+          Serial.print(",");
+      }
+  }
+  Serial.print("return len="); Serial.println(data_len+prefix_len);
+  Serial.println("");
+  // ---
+  return data_len+prefix_len+pos+1; // TODO: last char always EOL ('\0')
 }
+
 
 // -----------------------------------------------------------------------------------------------------------
 void sender()
@@ -111,7 +139,7 @@ void sender()
             continue; // sending is not possible, already sending
         }
 
-        if ((millis() - start_time) > 2000) // do this every 2000 ms
+        if ((millis() - start_time) > 5000) // do this every 2000 ms
         {
             start_time = millis();
             //Serial.print("Send Packet ("); Serial.print(length); Serial.print("): "); Serial.println(*counter);
@@ -125,11 +153,11 @@ void sender()
 
             uint8_t len;
             //char prefix[3];
-            len = ins_data("TMP", bmp.readTemperature(), 0); // first portion (temperature)
-            len = ins_data("ALT", bmp.readAltitude(1013.25), len); // next, altitude in meters
-            len = ins_data("PRS", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
+            len = ins_data("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
+            len = ins_data("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
+            len = ins_data("PRS03|", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
             rfm.sendVariable(send_buff, len);
-            Serial.println(send_buff); // show sent data
+            Serial.print("sent buff=[");Serial.print(send_buff);Serial.println("]"); // show sent data
         }
     }
 }

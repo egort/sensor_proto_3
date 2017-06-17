@@ -37,7 +37,7 @@ Adafruit_BMP280::Adafruit_BMP280(int8_t cspin, int8_t mosipin, int8_t misopin, i
 { }
 
 
-bool Adafruit_BMP280::begin(uint8_t a, uint8_t chipid) {
+bool Adafruit_BMP280::begin(uint8_t a) {
   _i2caddr = a;
 
   if (_cs == -1) {
@@ -58,7 +58,7 @@ bool Adafruit_BMP280::begin(uint8_t a, uint8_t chipid) {
     }
   }
 
-  if (read8(BMP280_REGISTER_CHIPID) != chipid)
+  if (read8(BMP280_REGISTER_CHIPID) != 0x58)
     return false;
 
   readCoefficients();
@@ -110,7 +110,7 @@ void Adafruit_BMP280::write8(byte reg, byte value)
 
 /**************************************************************************/
 /*!
-    @brief  Reads an 8 bit value over I2C/SPI
+    @brief  Reads an 8 bit value over I2C
 */
 /**************************************************************************/
 uint8_t Adafruit_BMP280::read8(byte reg)
@@ -139,7 +139,7 @@ uint8_t Adafruit_BMP280::read8(byte reg)
 
 /**************************************************************************/
 /*!
-    @brief  Reads a 16 bit value over I2C/SPI
+    @brief  Reads a 16 bit value over I2C
 */
 /**************************************************************************/
 uint16_t Adafruit_BMP280::read16(byte reg)
@@ -175,7 +175,7 @@ uint16_t Adafruit_BMP280::read16_LE(byte reg) {
 
 /**************************************************************************/
 /*!
-    @brief  Reads a signed 16 bit value over I2C/SPI
+    @brief  Reads a signed 16 bit value over I2C
 */
 /**************************************************************************/
 int16_t Adafruit_BMP280::readS16(byte reg)
@@ -193,9 +193,10 @@ int16_t Adafruit_BMP280::readS16_LE(byte reg)
 
 /**************************************************************************/
 /*!
-    @brief  Reads a 24 bit value over I2C/SPI
+    @brief  Reads a signed 16 bit value over I2C
 */
 /**************************************************************************/
+
 uint32_t Adafruit_BMP280::read24(byte reg)
 {
   uint32_t value;
@@ -205,7 +206,7 @@ uint32_t Adafruit_BMP280::read24(byte reg)
     Wire.write((uint8_t)reg);
     Wire.endTransmission();
     Wire.requestFrom((uint8_t)_i2caddr, (byte)3);
-    
+
     value = Wire.read();
     value <<= 8;
     value |= Wire.read();
@@ -217,7 +218,7 @@ uint32_t Adafruit_BMP280::read24(byte reg)
       SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE0));
     digitalWrite(_cs, LOW);
     spixfer(reg | 0x80); // read, bit 7 high
-    
+
     value = spixfer(0);
     value <<= 8;
     value |= spixfer(0);
@@ -284,7 +285,7 @@ float Adafruit_BMP280::readTemperature(void)
 
 */
 /**************************************************************************/
-float Adafruit_BMP280::readPressure(void) {
+float Adafruit_BMP280::readPressure(float inHg) {
   int64_t var1, var2, p;
 
   // Must be done first to get the t_fine variable set up
@@ -310,7 +311,7 @@ float Adafruit_BMP280::readPressure(void) {
   var2 = (((int64_t)_bmp280_calib.dig_P8) * p) >> 19;
 
   p = ((p + var1 + var2) >> 8) + (((int64_t)_bmp280_calib.dig_P7)<<4);
-  return (float)p/256;
+  return (float)p/256/inHg;
 }
 
 float Adafruit_BMP280::readAltitude(float seaLevelhPa) {
