@@ -70,11 +70,8 @@ void setup() {
 // -----------------------------------------------------------------------------------------------------------
 int ins_data (const char *prefix, float data, uint8_t pos)
 {
-  /* char send_buff[64]; // GLOBAL
-  len = ins_data("TMP03", bmp.readTemperature(), 0); // first portion (temperature)
-  len = ins_data("ALT03", bmp.readAltitude(1013.25), len); // next, altitude in meters
-  len = ins_data("PRS03", bmp.readPressure(133.3), len); // last, pressure in mm Hg*/
-
+  // char send_buff[64] is GLOBAL
+  // TODO: implement BUFFER OVERFLOW checking
   uint8_t data_len; // TODO: try to use negative for left alignment in dtostr
   int8_t prefix_len = strlen(prefix);             // prefix length
   char *ptr_prefix = &send_buff[pos];             // sensor prefix (const char[]) position pointer
@@ -90,14 +87,15 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   Serial.println(data);
 
   // --- calculate length of sensor data part (float + delimiter), i.e. "0.1|" = 4
-  if (data > 0 && data < 10 ){ data_len = 4;}
-  if (data >= 10 && data < 100) {data_len =5;}
-  if (data >= 100 && data < 1000) {data_len=6;}
-  if (data >= 1000 && data < 10000) {data_len=7;}
-  if (data > -10 && data < 0) {data_len=5;}
-  if (data > -100 && data <= -10) {data_len=6;}
-  if (data > -1000 && data <= -100) {data_len=7;}
-  if (data > -10000 && data <= -1000) {data_len=8;}
+  if (data == 0) data_len = 2;
+  if (data > 0 && data < 10 ) data_len = 4;
+  if (data >= 10 && data < 100) data_len =5;
+  if (data >= 100 && data < 1000) data_len=6;
+  if (data >= 1000 && data < 10000) data_len=7;
+  if (data > -10 && data < 0) data_len=5;
+  if (data > -100 && data <= -10) data_len=6;
+  if (data > -1000 && data <= -100) data_len=7;
+  if (data > -10000 && data <= -1000) data_len=8;
   dtostrf(data, data_len-1, 1, ptr_data);                 // put sensor data
   strcpy(&send_buff[pos + prefix_len + data_len-1], "|"); // put trail delimiter
   // ---
@@ -109,9 +107,9 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   {
       if (ptr0[i] < 32 || ptr0[i] > 126) // print code
       {
-          Serial.print("[");
+          Serial.print("\\");
           Serial.print((int8_t)ptr0[i]);
-          Serial.print("],");
+          Serial.print(",");
       }
       else
       {
@@ -147,9 +145,17 @@ void sender()
         {
             start_time = millis();
             uint8_t len;
-            len = ins_data("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
-            len = ins_data("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
-            len = ins_data("PRS03|", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
+
+            len = ins_data("TMP01|", -1, 0); // first portion (temperature)
+            len = ins_data("TMP02|", -10, 0); // first portion (temperature)
+            len = ins_data("TMP03|", -100, 0); // first portion (temperature)
+            len = ins_data("TMP04|", -1000, 0); // first portion (temperature)
+            len = ins_data("TMP44|", -9999, 0); // first portion (temperature)
+            len = ins_data("TMP92|", 99.9, 0); // first portion (temperature)
+
+            // len = ins_data("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
+            // len = ins_data("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
+            // len = ins_data("PRS03|", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
             rfm.sendVariable(send_buff, len);
             Serial.print("sent buff=[");Serial.print(send_buff);Serial.println("]"); // show sent data
         }
