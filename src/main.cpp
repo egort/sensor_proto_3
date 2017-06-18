@@ -78,7 +78,8 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   uint8_t data_len; // TODO: try to use negative for left alignment in dtostr
   int8_t prefix_len = strlen(prefix);             // prefix length
   char *ptr_prefix = &send_buff[pos];             // sensor prefix (const char[]) position pointer
-  char *ptr_data = &send_buff[pos+prefix_len];    // sensor data (float) position pointer
+  char *ptr_data = &send_buff[pos + prefix_len];    // sensor data (float) position pointer
+
   strcpy(ptr_prefix, prefix);                     // put sensor prefix
 
   Serial.print("prefix=");
@@ -88,20 +89,21 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   Serial.print(", data=");
   Serial.println(data);
 
-  if (data > 0 && data < 10 ){ data_len = 3;}
-  if (data >= 10 && data < 100) {data_len =4;}
-  if (data >= 100 && data < 1000) {data_len=5;}
-  if (data >= 1000 && data < 10000) {data_len=6;}
-  if (data > -10 && data < 0) {data_len=4;}
-  if (data > -100 && data <= -10) {data_len=5;}
-  if (data > -1000 && data <= -100) {data_len=6;}
-  if (data > -10000 && data <= -1000) {data_len=7;}
-  dtostrf(data, data_len, 1, ptr_data);         // put sensor data
-  strcpy(&send_buff[prefix_len+data_len+pos],"|"); // put trail delimiter
-  //strcpy(&send_buff[prefix_len+data_len+pos+1],'\0'); // put EOL
+  // --- calculate length of sensor data part (float + delimiter), i.e. "0.1|" = 4
+  if (data > 0 && data < 10 ){ data_len = 4;}
+  if (data >= 10 && data < 100) {data_len =5;}
+  if (data >= 100 && data < 1000) {data_len=6;}
+  if (data >= 1000 && data < 10000) {data_len=7;}
+  if (data > -10 && data < 0) {data_len=5;}
+  if (data > -100 && data <= -10) {data_len=6;}
+  if (data > -1000 && data <= -100) {data_len=7;}
+  if (data > -10000 && data <= -1000) {data_len=8;}
+  dtostrf(data, data_len, 1, ptr_data);                 // put sensor data
+  strcpy(&send_buff[pos + prefix_len + data_len], "|"); // put trail delimiter
+  // ---
 
-    // --- show send_buff content
-  Serial.print("pos="); Serial.println(data_len+prefix_len+pos+1);
+  // --- show send_buff content [debug]
+  Serial.print("pos="); Serial.println(pos + prefix_len + data_len);
   char *ptr0 = &send_buff[0];
   for (int i = 0; i < 64; i++)
   {
@@ -118,10 +120,11 @@ int ins_data (const char *prefix, float data, uint8_t pos)
       }
   }
   Serial.println("");
-  Serial.print("return len="); Serial.println(data_len+prefix_len);
+  Serial.print("return len="); Serial.println(prefix_len + data_len);
   Serial.println("");
   // ---
-  return data_len+prefix_len+pos+1; // TODO: last char always EOL ('\0')
+
+  return pos + prefix_len + data_len; // TODO: last char always EOL ('\0')
 }
 
 
