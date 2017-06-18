@@ -28,6 +28,7 @@ plainRFM69 rfm = plainRFM69(SLAVE_SELECT_PIN); // SPI bus mode
 
 bool isBMP280present = false; // sensor availability
 char send_buff[64]; // rfm sending data buffer
+int8_t send_buff_len = 64; // max send buffer length
 
 // Temp2|" +String(bmp.readTemperature()) +"|Pres2|" +bmp.readPressure()/133.3 +"|Alt2|" +bmp.readAltitude(1013.25);
 
@@ -68,18 +69,30 @@ void setup() {
 
 
 // -----------------------------------------------------------------------------------------------------------
+// insert passing data in global send_buff[64] at requested position
+// return first free position in send_buff[], or 0 when no enough space for requested data placement
+// prefix like "XXXnn|"
+// data in -9999.9 to 9999.9
+// pos in 0 to 63: position in send_buff[] to insert prefix and data
 int ins_data (const char *prefix, float data, uint8_t pos)
 {
-  // char send_buff[64] is GLOBAL
   // TODO: implement BUFFER OVERFLOW checking
-  uint8_t data_len; // TODO: try to use negative for left alignment in dtostr
-  int8_t prefix_len = strlen(prefix);             // prefix length
-  char *ptr_prefix = &send_buff[pos];             // sensor prefix (const char[]) position pointer
-  char *ptr_data = &send_buff[pos + prefix_len];    // sensor data (float) position pointer
+  uint8_t data_len;                                  // TODO: try to use negative for left alignment in dtostr
+  int8_t prefix_len = strlen(prefix);               // prefix length
+  char *ptr_prefix = &send_buff[pos];              // sensor prefix (const char[]) position pointer
+  char *ptr_data = &send_buff[pos + prefix_len];  // sensor data (float) position pointer
 
-  strcpy(ptr_prefix, prefix);                     // put sensor prefix
+  // buffer overflow checking
+  if (pos + prefix_len < 64 )
+    strcpy(ptr_prefix, prefix);                  // put sensor prefix
+  else
+  {
+    return pos;                                // exit due not enough space in send_buff
+  }
 
-  Serial.print("prefix=");
+  Serial.print("send_buff[] length=");
+  Serial.print(strlen(send_buff));
+  Serial.print(", prefix=");
   Serial.print(prefix);
   Serial.print(", prefix_len=");
   Serial.print(prefix_len);
@@ -96,8 +109,13 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   if (data > -100 && data <= -10) data_len=6;
   if (data > -1000 && data <= -100) data_len=7;
   if (data > -10000 && data <= -1000) data_len=8;
-  dtostrf(data, data_len-1, 1, ptr_data);                 // put sensor data
-  strcpy(&send_buff[pos + prefix_len + data_len-1], "|"); // put trail delimiter
+  if (pos + prefix_len + data_len < 64)                     // buffer overflow checking
+  {
+    dtostrf(data, data_len-1, 1, ptr_data);                 // put sensor data
+    strcpy(&send_buff[pos + prefix_len + data_len-1], "|"); // put trail delimiter
+  }
+  else
+    return pos; // exit due not enough space in send_buff
   // ---
 
   // --- show send_buff content [debug]
@@ -121,8 +139,10 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   Serial.print("return len="); Serial.println(prefix_len + data_len);
   Serial.println("");
   // ---
-
-  return pos + prefix_len + data_len; // TODO: last char always EOL ('\0')
+  if (pos + prefix_len + data_len < send_buff_len)
+    return pos + prefix_len + data_len; // TODO: last char always EOL ('\0')
+  else
+    return pos; //TODO: do not allow buff OVERFLOW (see strcpy() above)
 }
 
 
@@ -147,11 +167,11 @@ void sender()
             uint8_t len;
 
             len = ins_data("TMP01|", -1, 0); // first portion (temperature)
-            len = ins_data("TMP02|", -10, 0); // first portion (temperature)
-            len = ins_data("TMP03|", -100, 0); // first portion (temperature)
-            len = ins_data("TMP04|", -1000, 0); // first portion (temperature)
-            len = ins_data("TMP44|", -9999, 0); // first portion (temperature)
-            len = ins_data("TMP92|", 99.9, 0); // first portion (temperature)
+            len = ins_data("TMP02|", -10, len); // first portion (temperature)
+            len = ins_data("TMP03|", -100, len); // first portion (temperature)
+            len = ins_data("TMP04|", -1000, len); // first portion (temperature)
+            len = ins_data("TMP44|", -9999, len); // first portion (temperature)
+            len = ins_data("TMP92|", 99.9, len); // first portion (temperature)
 
             // len = ins_data("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
             // len = ins_data("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
