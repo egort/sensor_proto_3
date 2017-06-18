@@ -98,8 +98,8 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   if (data > -100 && data <= -10) {data_len=6;}
   if (data > -1000 && data <= -100) {data_len=7;}
   if (data > -10000 && data <= -1000) {data_len=8;}
-  dtostrf(data, data_len, 1, ptr_data);                 // put sensor data
-  strcpy(&send_buff[pos + prefix_len + data_len], "|"); // put trail delimiter
+  dtostrf(data, data_len-1, 1, ptr_data);                 // put sensor data
+  strcpy(&send_buff[pos + prefix_len + data_len-1], "|"); // put trail delimiter
   // ---
 
   // --- show send_buff content [debug]
