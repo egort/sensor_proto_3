@@ -28,7 +28,6 @@ plainRFM69 rfm = plainRFM69(SLAVE_SELECT_PIN); // SPI bus mode
 
 bool isBMP280present = false; // sensor availability
 char send_buff[64]; // rfm sending data buffer
-int8_t send_buff_len = 64; // max send buffer length
 
 // Temp2|" +String(bmp.readTemperature()) +"|Pres2|" +bmp.readPressure()/133.3 +"|Alt2|" +bmp.readAltitude(1013.25);
 
@@ -69,35 +68,32 @@ void setup() {
 
 
 // -----------------------------------------------------------------------------------------------------------
-// insert passing data in global send_buff[64] at requested position
-// return first free position in send_buff[], or 0 when no enough space for requested data placement
+// parsing and wrapping sending data in global send_buff[64] at requested position
+// return position of the first '\0' in send_buff[], or 0 when no enough space for requested data placement
 // prefix like "XXXnn|"
 // data in -9999.9 to 9999.9
 // pos in 0 to 63: position in send_buff[] to insert prefix and data
-int ins_data (const char *prefix, float data, uint8_t pos)
+uint8_t wrap_data_to_send_buff (const char *prefix, float data, uint8_t pos)
 {
-  // TODO: implement BUFFER OVERFLOW checking
-  uint8_t data_len;                                  // TODO: try to use negative for left alignment in dtostr
-  int8_t prefix_len = strlen(prefix);               // prefix length
-  char *ptr_prefix = &send_buff[pos];              // sensor prefix (const char[]) position pointer
-  char *ptr_data = &send_buff[pos + prefix_len];  // sensor data (float) position pointer
+  uint8_t data_len;                                       // TODO: try to use negative for left alignment in dtostr
+  uint8_t prefix_len = strlen(prefix);                    // prefix length (WITHOUT \0)
+  char *ptr_prefix_in_buff = &send_buff[pos];             // sensor prefix (const char[]) position pointer
+  char *ptr_data_in_buff = &send_buff[pos + prefix_len];  // sensor data (float) position pointer
+  uint8_t send_buff_size = sizeof(send_buff);             // send_buff[] full size
+
+  Serial.print("sizeof(send_buff)="); Serial.println(send_buff_size);
+  Serial.print("strlen(send_buff)="); Serial.println(strlen(send_buff));
+  Serial.print("pos="); Serial.println(pos);
+  Serial.print("prefix="); Serial.print(prefix); Serial.print(", prefix_len="); Serial.println(prefix_len);
 
   // buffer overflow checking
-  if (pos + prefix_len < 64 )
-    strcpy(ptr_prefix, prefix);                  // put sensor prefix
+  if (pos + prefix_len < send_buff_size )
+    strcpy(ptr_prefix_in_buff, prefix);             // put sensor prefix
   else
   {
-    return pos;                                // exit due not enough space in send_buff
+    Serial.println("ERR:no space for prefix, return 0.") ;
+    return 0;  // not enough space for prefix in send_buff[]
   }
-
-  Serial.print("send_buff[] length=");
-  Serial.print(strlen(send_buff));
-  Serial.print(", prefix=");
-  Serial.print(prefix);
-  Serial.print(", prefix_len=");
-  Serial.print(prefix_len);
-  Serial.print(", data=");
-  Serial.println(data);
 
   // --- calculate length of sensor data part (float + delimiter), i.e. "0.1|" = 4
   if (data == 0) data_len = 2;
@@ -109,17 +105,22 @@ int ins_data (const char *prefix, float data, uint8_t pos)
   if (data > -100 && data <= -10) data_len=6;
   if (data > -1000 && data <= -100) data_len=7;
   if (data > -10000 && data <= -1000) data_len=8;
-  if (pos + prefix_len + data_len < 64)                     // buffer overflow checking
+
+  Serial.print("data="); Serial.print(data, 1); Serial.print("|, data_len="); Serial.println(data_len);
+
+  if (pos + prefix_len + data_len < send_buff_size)                // send_buff[] range checking
   {
-    dtostrf(data, data_len-1, 1, ptr_data);                 // put sensor data
-    strcpy(&send_buff[pos + prefix_len + data_len-1], "|"); // put trail delimiter
+    dtostrf(data, data_len -1, 1, ptr_data_in_buff);                 // put sensor data (float) data_len-1
+    strcpy(&send_buff[pos +prefix_len +data_len -1], "|");         // put trail delimiter
   }
-  else
-    return pos; // exit due not enough space in send_buff
+  else // not enough space in send_buff[]
+  {
+    Serial.println("ERR:no space for data, return 0.") ;
+    return 0;
+  }
   // ---
 
   // --- show send_buff content [debug]
-  Serial.print("pos="); Serial.println(pos + prefix_len + data_len);
   char *ptr0 = &send_buff[0];
   for (int i = 0; i < 64; i++)
   {
@@ -134,15 +135,12 @@ int ins_data (const char *prefix, float data, uint8_t pos)
           Serial.print(ptr0[i]); // print ascii char
           Serial.print(",");
       }
-  }
-  Serial.println("");
-  Serial.print("return len="); Serial.println(prefix_len + data_len);
-  Serial.println("");
+  } Serial.println("");
+  Serial.print("return next pos="); Serial.print(pos + prefix_len + data_len);Serial.println(" (from 0)");
+  Serial.println("==============================================");
   // ---
-  if (pos + prefix_len + data_len < send_buff_len)
-    return pos + prefix_len + data_len; // TODO: last char always EOL ('\0')
-  else
-    return pos; //TODO: do not allow buff OVERFLOW (see strcpy() above)
+
+  return pos + prefix_len + data_len; // TODO: last char always EOL ('\0')
 }
 
 
@@ -150,9 +148,6 @@ int ins_data (const char *prefix, float data, uint8_t pos)
 void sender()
 {
     uint32_t start_time = millis();
-
-    //uint8_t length;
-    //String Buff;
 
     while(true) // infinite sending loop
     {
@@ -164,19 +159,19 @@ void sender()
         if ((millis() - start_time) > 5000) // do this every 2000 ms
         {
             start_time = millis();
-            uint8_t len;
+            uint8_t pos; // offset from the send_buff[] beginning
 
-            len = ins_data("TMP01|", -1, 0); // first portion (temperature)
-            len = ins_data("TMP02|", -10, len); // first portion (temperature)
-            len = ins_data("TMP03|", -100, len); // first portion (temperature)
-            len = ins_data("TMP04|", -1000, len); // first portion (temperature)
-            len = ins_data("TMP44|", -9999, len); // first portion (temperature)
-            len = ins_data("TMP92|", 99.9, len); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP01|", -1, 0); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP02|", -10, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP03|", -100, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP04|", -1000, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP44|", -999, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP92|", 99.9, pos); // first portion (temperature)
 
-            // len = ins_data("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
-            // len = ins_data("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
-            // len = ins_data("PRS03|", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
-            rfm.sendVariable(send_buff, len);
+            // len = wrap_data_to_send_buff("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
+            // len = wrap_data_to_send_buff("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
+            // len = wrap_data_to_send_buff("PRS03|", bmp.readPressure()/133.3, len); // last, pressure in mm Hg
+            rfm.sendVariable(send_buff, pos);
             Serial.print("sent buff=[");Serial.print(send_buff);Serial.println("]"); // show sent data
         }
     }
