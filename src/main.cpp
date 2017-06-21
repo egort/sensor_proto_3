@@ -70,15 +70,16 @@ void setup() {
 // -----------------------------------------------------------------------------------------------------------
 // parsing and wrapping sending data in global send_buff[64] at requested position
 // return position of the first '\0' in send_buff[], or 0 when no enough space for requested data placement
-// prefix like "XXXnn|"
+// prefix like "XXXnn" & trail "|"
 // data in -9999.9 to 9999.9
 // pos in 0 to 63: position in send_buff[] to insert prefix and data
 uint8_t wrap_data_to_send_buff (const char *prefix, float data, uint8_t pos)
 {
+  uint8_t delim_len = 1;                                  // delimiter string (i.e. "|") length
   uint8_t data_len;                                       // TODO: try to use negative for left alignment in dtostr
-  uint8_t prefix_len = strlen(prefix);                    // prefix length (WITHOUT \0)
+  uint8_t prefix_len = strlen(prefix);                    // prefix length (WITHOUT \0 and delimiter)
   char *ptr_prefix_in_buff = &send_buff[pos];             // sensor prefix (const char[]) position pointer
-  char *ptr_data_in_buff = &send_buff[pos + prefix_len];  // sensor data (float) position pointer
+  char *ptr_data_in_buff = &send_buff[pos + prefix_len + delim_len];  // sensor data (float) position pointer
   uint8_t send_buff_size = sizeof(send_buff);             // send_buff[] full size
 
   Serial.print("sizeof(send_buff)="); Serial.println(send_buff_size);
@@ -87,31 +88,39 @@ uint8_t wrap_data_to_send_buff (const char *prefix, float data, uint8_t pos)
   Serial.print("prefix="); Serial.print(prefix); Serial.print(", prefix_len="); Serial.println(prefix_len);
 
   // buffer overflow checking
-  if (pos + prefix_len < send_buff_size )
-    strcpy(ptr_prefix_in_buff, prefix);             // put sensor prefix
+  if (pos + prefix_len + delim_len < send_buff_size )
+  {
+    strcpy(ptr_prefix_in_buff, prefix);             // add prefix
+    strcat(ptr_prefix_in_buff, "|");                // append delimiter
+  }
   else
   {
     Serial.println("ERR:no space for prefix, return 0.") ;
     return 0;  // not enough space for prefix in send_buff[]
   }
 
-  // --- calculate length of sensor data part (float + delimiter), i.e. "0.1|" = 4
-  if (data == 0) data_len = 2;
-  if (data > 0 && data < 10 ) data_len = 4;
-  if (data >= 10 && data < 100) data_len =5;
-  if (data >= 100 && data < 1000) data_len=6;
-  if (data >= 1000 && data < 10000) data_len=7;
-  if (data > -10 && data < 0) data_len=5;
-  if (data > -100 && data <= -10) data_len=6;
-  if (data > -1000 && data <= -100) data_len=7;
-  if (data > -10000 && data <= -1000) data_len=8;
+  // --- calculate length (float) data in chars
+  if (data == 0) data_len = 1;                    // 0
+  if (data > 0 && data < 10 ) data_len = 3;       // 0.1 ... 9.9
+  if (data >= 10 && data < 100) data_len =4;      // 10.0 ... 99.9
+  if (data >= 100 && data < 1000) data_len=5;     // 100.0 ... 999.9
+  if (data >= 1000 && data < 10000) data_len=6;   // 1000 ... 9999.9
+  if (data > -10 && data < 0) data_len=4;         // -9.9 ... -0.1
+  if (data > -100 && data <= -10) data_len=5;     // -99.9 ... -10.0
+  if (data > -1000 && data <= -100) data_len=6;   // -999.9 ... -100.0
+  if (data > -10000 && data <= -1000) data_len=7; // -9999.9 ... -1000.0
+  if (data >= 10000) { data = -9999.9; data_len=7; } // invert out of range values, to looks like owerflow
+  if (data <= -10000) { data = 9999.9; data_len=6; } // --"--
 
-  Serial.print("data="); Serial.print(data, 1); Serial.print("|, data_len="); Serial.println(data_len);
+  Serial.print("data="); Serial.print(data, 1); Serial.print(", data_len="); Serial.println(data_len);
 
-  if (pos + prefix_len + data_len < send_buff_size)                // send_buff[] range checking
+  // TODO:implement delim_len also for prefix (to use "TMP01" instead of "TMP01|")
+
+  if (pos + prefix_len + delim_len + data_len + delim_len < send_buff_size)                // send_buff[] range checking
   {
-    dtostrf(data, data_len -1, 1, ptr_data_in_buff);                 // put sensor data (float) data_len-1
-    strcpy(&send_buff[pos +prefix_len +data_len -1], "|");         // put trail delimiter
+    ptr_data_in_buff = dtostrf(data, data_len, 1, ptr_data_in_buff);                 // put sensor data (float) data_len-1
+    strcat(ptr_data_in_buff, "|");
+    //strcpy(&send_buff[pos +prefix_len +data_len], "|");         // put trail delimiter
   }
   else // not enough space in send_buff[]
   {
@@ -136,11 +145,11 @@ uint8_t wrap_data_to_send_buff (const char *prefix, float data, uint8_t pos)
           Serial.print(",");
       }
   } Serial.println("");
-  Serial.print("return next pos="); Serial.print(pos + prefix_len + data_len);Serial.println(" (from 0)");
+  Serial.print("return next pos="); Serial.print(pos + prefix_len + delim_len + data_len + delim_len); Serial.println(" (from 0)");
   Serial.println("==============================================");
   // ---
 
-  return pos + prefix_len + data_len; // TODO: last char always EOL ('\0')
+  return pos + prefix_len + delim_len + data_len + delim_len; // TODO: last char always EOL ('\0')
 }
 
 
@@ -161,12 +170,12 @@ void sender()
             start_time = millis();
             uint8_t pos; // offset from the send_buff[] beginning
 
-            pos = wrap_data_to_send_buff("TMP01|", -1, 0); // first portion (temperature)
-            pos = wrap_data_to_send_buff("TMP02|", -10, pos); // first portion (temperature)
-            pos = wrap_data_to_send_buff("TMP03|", -100, pos); // first portion (temperature)
-            pos = wrap_data_to_send_buff("TMP04|", -1000, pos); // first portion (temperature)
-            pos = wrap_data_to_send_buff("TMP44|", -999, pos); // first portion (temperature)
-            pos = wrap_data_to_send_buff("TMP92|", 99.9, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP01", -1, 0); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP02", -10, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP03", -100, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP04", -1000, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP44", -999, pos); // first portion (temperature)
+            pos = wrap_data_to_send_buff("TMP92", 99.9, pos); // first portion (temperature)
 
             // len = wrap_data_to_send_buff("TMP03|", bmp.readTemperature(), 0); // first portion (temperature)
             // len = wrap_data_to_send_buff("ALT03|", bmp.readAltitude(1013.25), len); // next, altitude in meters
